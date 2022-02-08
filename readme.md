@@ -1,6 +1,6 @@
 # PredFull
 
-__Visit [http://pepnet.com/](http://pepnet.com/) to try online prediction__
+__Visit [https://denovo.predfull.com/](https://denovo.predfull.com/) to try online prediction__
 
 The first model for predicting complete tandem mass spectra from peptides sequences, using a deep CNN neural network trained on over 2 million experimental spectra.
 
