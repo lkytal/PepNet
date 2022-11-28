@@ -16,7 +16,7 @@ from utils import *
 print(tf.__version__, tf.config.list_physical_devices('GPU'))
 
 
-def convert_mgf(data, max_charge=4, count=-1, default_charge=-1):
+def read_mgf(data, count=-1, default_charge=-1):
     collision_const = {1: 1, 2: 0.9, 3: 0.85, 4: 0.8, 5: 0.75, 6: 0.75, 7: 0.75, 8: 0.75}
     spectra = []
 
@@ -31,13 +31,10 @@ def convert_mgf(data, max_charge=4, count=-1, default_charge=-1):
         else:
             c = int(str(param['charge'][0])[0])
 
-        if c > max_charge:
-            continue
-
         if 'seq' in param:
-            pep = param['seq']
+            pep = param['seq'].strip()
         elif 'title' in param:
-            pep = param['title']
+            pep = param['title'].strip()
         else:
             pep = ''
 
@@ -61,7 +58,7 @@ def convert_mgf(data, max_charge=4, count=-1, default_charge=-1):
         mz = sp['m/z array']
         it = sp['intensity array']
 
-        spectra.append({'pep': pep.strip(), 'charge': c, 'type': 3,
+        spectra.append({'pep': pep, 'charge': c, 'type': 3, 'nmod': 0, 'mod': np.zeros(len(pep), 'int32'),
                     'mass': mass, 'mz': mz, 'it': it, 'nce': hcd})
 
         if count > 0 and len(spectra) >= count:
@@ -70,18 +67,20 @@ def convert_mgf(data, max_charge=4, count=-1, default_charge=-1):
     return spectra
 
 # post correction step
-def post_correction(matrix, mass, c, ppm=20):
+def post_correction(matrix, mass, c, ppm=10):
     positional_score = np.max(matrix, axis=-1)
     seq = decode(matrix)
     pep = topep(seq)
     seq = seq[:len(pep)]
     tol = mass * ppm / 1000000
 
-    for char in '*[]':
-        if char in pep:
-            pep = clean(pep)
-            positional_score[len(pep):] = 1
-            return pep, -1, positional_score
+    for i, char in enumerate(pep):
+        if char in '*[]':
+            pep = pep[:i]
+            positional_score[i:] = 1
+            seq = seq[:i]
+            break
+
     if len(pep) < 1:
         return '', -1, positional_score
 
@@ -126,16 +125,11 @@ class hyper():
     outlen: int = lmax + 2
     m1max: int = 2048
     mz_max: int = 2048
-    pre: float = 0.25
-    low: float = 0 #pre_denova / 2
+    pre: float = 0.1
+    low: float = 0
     vdim: int = int(mz_max / pre)
-    pdim: int = 512
     dim: int = vdim + 0
-    mod: int = 0
-    maxc: int = 6
-
-    nnum: int = 4
-    pnum: int = 4
+    maxc: int = 8
     sp_dim: int = 4
 
     mode: int = 3
@@ -148,8 +142,7 @@ def input_processor(spectra):
     inputs = config({
         'y': np.zeros([nums, hyper.sp_dim, hyper.dim], 'float32'),
         'info': np.zeros([nums, 2], 'float32'),
-        'charge': np.zeros([nums, 4], 'float32'),
-        'pks': np.zeros([nums, 2, hyper.pdim], 'float32')
+        'charge': np.zeros([nums, hyper.maxc], 'float32')
     })
 
     for i, sp in enumerate(spectra):
@@ -185,14 +178,14 @@ def denovo(model, spectra, batch_size):
         ms, c = sp['mass'], sp['charge']
 
         # run post correction
-        f1, pos, positional_score = post_correction(rst, ms, c)
+        pep, pos, positional_score = post_correction(rst, ms, c)
 
-        predict_peps.append(f1)
+        predict_peps.append(pep)
         positional_scores.append(positional_score)
         scores.append(np.prod(positional_score))
 
-    ppm_diff = asnp32([ppm(sp['mass'], m1(pp, c)) for sp, pp, c in zip(spectra, predict_peps, charges)])
-    return peps, predict_peps, scores, positional_scores, ppm_diff, spectra
+    ppm_diffs = asnp32([ppm(sp['mass'], m1(pp, c)) for sp, pp, c in zip(spectra, predict_peps, charges)])
+    return peps, predict_peps, scores, positional_scores, ppm_diffs, spectra
 
 
 parser = argparse.ArgumentParser()
@@ -225,7 +218,7 @@ f.writelines(['TITLE\tDENOVO\tScore\tPPM Difference\tPositional Score\n'])
 # sequencing loop
 i = 0
 while True:
-    spectra = convert_mgf(input_stream, count=args.loop_size, default_charge=args.default_charge)
+    spectra = read_mgf(input_stream, count=args.loop_size, default_charge=args.default_charge)
     if len(spectra) <= 0:
         break
 
