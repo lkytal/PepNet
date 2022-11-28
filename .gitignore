@@ -265,5 +265,3 @@ readme
 *.ipynb
 *.h5
 *.hdf5
-*.mgf
-*.tsv
