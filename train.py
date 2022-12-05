@@ -20,7 +20,7 @@ from dataclasses import dataclass, asdict
 from collections import namedtuple
 
 import pyteomics
-from pyteomics import mgf, mass, cmass
+from pyteomics import mgf, mass
 
 
 # In[2]:
@@ -68,20 +68,6 @@ class config(dict):
 
 # In[4]:
 
-
-def iterate(x, bsz):
-    while len(x) > bsz:
-        yield x[:bsz]
-        x = x[bsz:]
-    yield x
-
-def data_gen(x, fn, bsz, xonly=0):
-    for batch in iterate(x, bsz):
-        if xonly:
-            yield (fn(batch, **kws), )
-        else:
-            yield fn(batch, **kws)
-
 class data_seq(k.utils.Sequence):
     def __init__(self, sps, processor, batch_size, shuffle=1, xonly=1, **kws):
         self.sps = sps
@@ -108,63 +94,15 @@ class data_seq(k.utils.Sequence):
             return self.processor(self.sps[start_idx: end_idx], **self.kws)
 
 
-# In[5]:
-
-
-def vec_dense(x, nodes, name, act='sigmoid', layers=tuple(), lr=None, **kws):
-    for l in layers: x = res(x, l, 3, act='relu', **kws)
-    x = k.layers.GlobalAveragePooling1D()(x)
-#     x = k.layers.Flatten()(x)
-    x = k.layers.Dense(nodes, activation=act, name=name, dtype='float32')(x)
-    if lr is not None: x = SetLR(x, lr, True)(x)
-    return x
-
-
-# In[6]:
-
-
-def pA(peps):
-    n = zero32(20)
-    for p in peps:
-        ni = zero32(20)
-        for a in p:
-            ni[charMap[a] - 1] = 1
-        n += ni
-    return n / len(peps)
-
-def dA(peps):
-    n = zero32(20)
-    for p in peps:
-        for a in p: n[charMap[a] - 1] += 1
-    return n
-
-
 # In[7]:
 
 
-def fastmass(pep, ion_type, charge, parse_mod=1, nmod=None, mod=None, cam=True):
-    if parse_mod:
-        if mod is None and nmod is None:
-            pep, mod, nmod = getmod(pep)
+def fastmass(pep, ion_type, charge, nmod=None, mod=None, cam=True):        
+    base = mass.fast_mass(pep, ion_type=ion_type, charge=charge)
 
-        if mod is None and not nmod is None:
-            raise 'nmod only'
-
-        if not mod is None and nmod is None:
-            raise 'mod only'
-        
-    base = cmass.fast_mass(pep.replace('Z', 'M'), ion_type=ion_type, charge=charge) # Z of oxid
-    base += 15.995 * pep.count('Z') / charge
-
-    if cam: base += 57.021 * pep.count('C') / charge
-        
-    if parse_mod:
-        base += nmod / charge
-        base += 15.995 * np.count_nonzero(mod == 1) / charge
-        base += 42.0106 * np.count_nonzero(mod == 2) / charge
-    #     base += -np.sum(mod[mod < 0])
+    if cam: base += 57.021 * pep.count('C') / charge # fixed C modification
     
-    return base #
+    return base
 
 def m1(pep, c=1, **kws): return fastmass(pep, ion_type='M', charge=c, **kws)
 def mseq(seq, c=1, **kws): return fastmass(topep(seq), ion_type='M', charge=c, **kws)
@@ -188,34 +126,10 @@ def ppmdiff(sp, pep=None):
 
 # In[8]:
 
-
-# def fcos(x, y): return 1 - distance.cosine(x, y)
-
-@nb.njit
-def fcos(a, b): return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
-# fcos(cnistdb[0], cnistdb[1])
-
-# cProfile.run('for i in range(10240): fcos(cnistdb[0], cnistdb[1])', sort='cumtime')
-
-from scipy.spatial import distance
-def cosine(u, v): return 1 - distance.cosine(u, v)
-
-def cos(x, y):
-    x = asnp(x)
-    y = asnp(y)
-    return cosine(x, y)
-
-c0 = np.float32(np.log(10001.0))
-
 @nb.njit
 def normalize(it, mode):
     if mode == 0:
         return it
-#     elif mode == 1:
-#         it *= 10000.0 / np.max(it)
-#         it += 1.0
-#         return np.log(it) / c0
 
     elif mode == 2: return np.sqrt(it)
 
@@ -230,7 +144,7 @@ def normalize(it, mode):
 
 
 @nb.njit
-def nde_ion(v, pre_mz, c, precision, low, r):
+def remove_precursor(v, pre_mz, c, precision, low, r):
     for delta in (0, 1, 2):
         mz = pre_mz + delta / c
         if mz > 0 and mz >= low:
@@ -239,38 +153,11 @@ def nde_ion(v, pre_mz, c, precision, low, r):
             if pc - r < len(v): v[max(0, pc - r): min(len(v), pc + r)] = 0
     return None # force inline
 
-def de_ion(v, pre_mz, c, precision, low, r=1):
-    return nde_ion(v, pre_mz, c, precision, low, r)
-
-@nb.njit
-def filterPeaks(v, _max_peaks):
-    if _max_peaks <= 0 or len(v) <= _max_peaks: return v
-
-    kth = len(v) - _max_peaks
-    peak_thres = np.partition(v, kth)[kth]
-    v[v < peak_thres] = 0
-    return v
-
-# @nb.jit
-def filterk(vits, _max_peaks):
-    if len(vits) <= _max_peaks: return its
-
-    kth = len(v) - _max_peaks
-    top_thres = np.partition(vits, kth)[kth]
-    its[its < top_thres] = noice
-    return its
-
 def kth(v, k):
     return np.partition(v, k)[k]
 
 
 # In[10]:
-
-
-# @nb.vectorize([int32(int32, int32)])
-# def cl(pos, length):
-#     if pos < 0 or pos >= length: return 0
-#     return pos
 
 @nb.njit
 def mz2pos(mzs, pre, low): return round(mzs / pre + low)
@@ -294,30 +181,26 @@ def flat(v, mz, it, pre, low, use_max):
 
 
 @nb.njit
-def n_tvectorlize(mz, it, mass, c, precision, dim, low, mode, v, kth, th, de, dn, use_max):
+def native_vectorlize(mz, it, mass, c, precision, dim, low, mode, v, kth, th, de, dn, use_max):
     it /= np.max(it)
 
     if dn > 0: it[it < dn] = 0
 
     it = normalize(it, mode) # pre-scale
 
-    if kth > 0: it = filterPeaks(it, _max_peaks=kth)
+    # if kth > 0: it = filterPeaks(it, _max_peaks=kth)
 
     flat(v, mz, it, precision, low, use_max)
 
-    if de == 1: nde_ion(v, mass, c, precision, low, r=1) #inplace, before scale
+    if de == 1: remove_precursor(v, mass, c, precision, low, r=1) #inplace, before scale
 
     v /= np.max(v) # final scale, de can change max
 
     return v
 
-def tvectorlize(mz, it, mass, c, precision, dim, low, mode, out=None, kth=-1, th=-1, de=1, dn=-1, use_max=0):
+def vectorlize(mz, it, mass, c, precision, dim, low, mode, out=None, kth=-1, th=-1, de=1, dn=-1, use_max=0):
     if out is None: out = np.zeros(dim, dtype='float32')
-    return n_tvectorlize(asnp32(mz), np32(it), mass, c, precision, dim, low, mode, out, kth, th, de, dn, use_max)
-
-def vectorlize(sp, *kw, **kws):
-    mz, it, mass, c = sp['mz'], sp['it'], sp['mass'], sp['charge']
-    return tvectorlize(mz, it, mass, c, *kw, **kws)
+    return native_vectorlize(asnp32(mz), np32(it), mass, c, precision, dim, low, mode, out, kth, th, de, dn, use_max)
 
 
 # #### Process
@@ -332,11 +215,6 @@ mono = {"G": 57.021464, "A": 71.037114, "S": 87.032029, "P": 97.052764, "V": 99.
        }
 mono = {k: v for k, v in sorted(mono.items(), key=lambda item: item[1])}
 
-ave_mass = {"A": 71.0788, "R": 156.1875, "N": 114.1038, "D": 115.0886, "C": 160.1598, "E": 129.1155,
-            "Q": 128.1307, "G": 57.0519, "H": 137.1411, "I": 113.1594, "L": 113.1594, "K": 128.1741,
-            "M": 131.1926, "F": 147.1766, "P": 97.1167, "S": 87.0782, "T": 101.1051,
-            "W": 186.2132, "Y": 163.1760, "V": 99.1326}
-
 Alist = list('ACDEFGHIKLMNPQRSTVWYZ')
 clist = ['*'] + Alist + [']', '[']
 oh_dim = len(clist)
@@ -344,16 +222,6 @@ oh_dim = len(clist)
 charMap = {aa: i for i, aa in enumerate(clist)}
 idmap = {i: aa for i, aa in enumerate(clist)}
 mlist = asnp32([0] + [mono[a] for a in Alist] + [0, 0])
-
-di_ms = {}
-
-for i in range(1, 21): # aa id from 1 to 21
-    if i == 8: continue # ignore I
-    for j in range(1, 21):
-        if j == 8: continue # ignore I
-        di_ms[Alist[i - 1] + Alist[j - 1]] = mlist[i] + mlist[j]
-
-def ms(p): return np.sum([mono[i] for i in p]) + 18.035
 
 
 # In[13]:
@@ -417,35 +285,28 @@ def oh(peps):
 # In[14]:
 
 
-def sp_ok(sp, ppm=10):
+def spectra_ok(sp, ppm=10):
     mz, mass, pep, c = sp['mz'], sp['mass'], sp['pep'], sp['charge']
 
     if not pep.isalpha():
-#         print(pep)
-        return False # mod uncleaned
+        return False # unknown mod
 
     if ppm > 0 and abs(ppmdiff(sp)) > ppm:
         return False
 
     return True
 
-def filterdb(db):
-    return [sp for sp in db if sp_ok(sp)]
+def filter_spectra(db):
+    return [sp for sp in db if spectra_ok(sp)]
 
 
 # ### load data
 
 # In[15]:
 
-
-def openmgf(fn):
-    file = open(fn, "r")
-    data = mgf.read(file, convert_arrays=1, read_charges=False, dtype='float32', use_index=False)
-    return data
-
 cr = {1: 1, 2: 0.9, 3: 0.85, 4: 0.8, 5: 0.75, 6: 0.75, 7: 0.75, 8: 0.75}
 
-def tojson(sps):
+def convert_mgf(sps):
     db = []
 
     for sp in sps:
@@ -481,7 +342,8 @@ def tojson(sps):
         it = sp['intensity array']
 
         db.append({'pep': pep, 'charge':c, 'mass': mass, 'mz': mz, 'it': it, 'nmod': 0,
-                   'mod': np.zeros(len(pep), 'int32'), 'nce': hcd, 'title': title })
+                   'mod': np.zeros(len(pep), 'int32'), # currently no mod supported
+                   'nce': hcd, 'title': title })
 
     return db
 
@@ -491,7 +353,7 @@ def readmgf(fn, type):
     file = open(fn, "r")
     data = mgf.read(file, convert_arrays=1, read_charges=False, dtype='float32', use_index=False)
 
-    codes = tojson(data)
+    codes = convert_mgf(data)
     
     for sp in codes:
         sp['type'] = types[type]
@@ -507,8 +369,8 @@ def i2l(sps):
 # In[16]:
 
 
-spstrain = i2l(filterdb(readmgf('data/tt.mgf', 'hcd')))
-spsval = i2l(filterdb(readmgf('data/tv.mgf', 'hcd')))
+spstrain = i2l(filter_spectra(readmgf('train.mgf', 'hcd')))
+spsval = i2l(filter_spectra(readmgf('validation.mgf', 'hcd')))
 
 
 # ### ResBlock
@@ -522,8 +384,6 @@ def norm_layer(norm):
             return BatchNormalization(**kws)
         if norm == 'bn0':
             normalizer = BatchNormalization({"gamma_initializer" :'zeros'}, **kws)
-        elif norm == 'gn':
-            return GroupNormalization(**kws)
         elif norm == 'in':
             return InstanceNormalization(**kws)
         elif norm == 'ln':
@@ -549,7 +409,7 @@ def layerset(c2d=0, norm=None, ghost=0):
         })
 
     return config({
-        'ConvLayer': ghostconv if ghost else k.layers.Conv1D,
+        'ConvLayer': k.layers.Conv1D,
         'UpSamplingLayer': k.layers.UpSampling1D,
         'MaxPoolingLayer': k.layers.MaxPooling1D,
         'AveragePoolingLayer': k.layers.AveragePooling1D,
@@ -643,72 +503,6 @@ def clean(pep):
 def cleans(peps): return [clean(p) for p in peps]
 
 
-# In[19]:
-
-
-def fix1(rst, mass, c, ppm=10):
-    pscore = np.max(rst, axis=-1)
-    seq = decode(rst)
-    pep = topep(seq)
-    seq = seq[:len(pep)]
-
-    for i, char in enumerate(pep):
-        if char in '*[]':
-            pep = pep[:i]
-            pscore[i:] = 1
-            seq = seq[:i]
-            break
-#             return pep, -1, pscore
-
-    if len(pep) < 1:
-        return '', -1, pscore
-
-    msp = m1(pep, c)
-    
-    seq, pos, pscore = nfix1(seq, c, pscore, msp, mass, ppm)
-    return topep(seq), pos, pscore
-
-@nb.jit
-def nfix1(seq, c, pscore, msp, mass, ppm):
-    delta = msp - mass
-    tol = mass * ppm / 1000000
-    
-    pos = 0
-    a = seq[0]
-    
-    if abs(msp - mass) <= tol:
-        return seq, -1, pscore
-
-    for i in range(len(seq) - 1):  # no last pos
-        mi = mlist[seq[i]]
-        for j in range(1, 21):
-            if j == 8:
-                continue  # ignore 'I'
-
-            d = msp - mass + (mlist[j] - mi) / c
-
-            if abs(d) < abs(delta):
-                delta = d
-                pos = i
-                a = j
-
-    if abs(delta) < tol:  # have good match
-        candi = (seq == seq[pos]).astype(np.int32)
-        if np.sum(candi) > 1.5:  # ambiguis
-            pos = np.argmin((1 - candi) * 10 + candi * pscore[:len(seq)])
-
-        seq[pos] = a
-        pscore[pos] = np.max(pscore)
-
-        return seq, pos, pscore
-    else:
-        return seq, -1, pscore
-
-# pep = 'AFGVTFSNK' #what(doutt['peps'][0])
-# rpep = 'AGGVTFSNK' # 'L' + pep[1:]
-# print(f'real: {rpep}\t\t', pep, '=>', fix1(encode(toseq(pep)), m1(rpep, c=2), c=2))
-
-
 # ### Denova start
 
 # In[20]:
@@ -786,10 +580,10 @@ class data_processor():
             inputs.charge[i][c - 1] = 1
 
             mdim = min(hyper.dim - 1, round((mass * c - c + 1) / hyper.pre))
-            tvectorlize(mzs, its, mass, c, hyper.pre, hyper.dim, hyper.low, 0, out=inputs.y[i][0], use_max=1)
+            vectorlize(mzs, its, mass, c, hyper.pre, hyper.dim, hyper.low, 0, out=inputs.y[i][0], use_max=1)
             inputs.y[i][1][:mdim] = inputs.y[i][0][:mdim][::-1] # reverse it
 
-            tvectorlize(mzs, its, mass, c, hyper.pre, hyper.dim, hyper.low, 0, out=inputs.y[i][2], use_max=0)
+            vectorlize(mzs, its, mass, c, hyper.pre, hyper.dim, hyper.low, 0, out=inputs.y[i][2], use_max=0)
             inputs.y[i][3][:mdim] = inputs.y[i][2][:mdim][::-1] # reverse mz
 
         return tuple([inputs[key] for key in inputs])
@@ -910,7 +704,14 @@ class denovo_model():
         return k.models.Model([inp, mz_inp, c_inp, ], v1, name='sp_net')
 
     @staticmethod
-    def helptasks(v1, hyper, act='relu', norm='in'):
+    def helptasks(v1, hyper, act='relu', norm='in'):        
+        def vec_dense(x, nodes, name, act='sigmoid', layers=tuple(), **kws):
+            for l in layers: x = res(x, l, 3, act='relu', **kws)
+            x = k.layers.GlobalAveragePooling1D()(x)
+        #     x = k.layers.Flatten()(x)
+            x = k.layers.Dense(nodes, activation=act, name=name, dtype='float32')(x)
+            return x
+
         helplayers = []
 
         helplayers.append(vec_dense(v1, 1, normal=norm, name='mass'))
