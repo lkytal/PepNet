@@ -65,9 +65,6 @@ class config(dict):
         super(config, self).__init__(*args, **kwargs)
         self.__dict__ = self
 
-
-# In[4]:
-
 class data_seq(k.utils.Sequence):
     def __init__(self, sps, processor, batch_size, shuffle=1, xonly=1, **kws):
         self.sps = sps
@@ -94,9 +91,6 @@ class data_seq(k.utils.Sequence):
             return self.processor(self.sps[start_idx: end_idx], **self.kws)
 
 
-# In[7]:
-
-
 def fastmass(pep, ion_type, charge, nmod=None, mod=None, cam=True):        
     base = mass.fast_mass(pep, ion_type=ion_type, charge=charge)
 
@@ -105,13 +99,6 @@ def fastmass(pep, ion_type, charge, nmod=None, mod=None, cam=True):
     return base
 
 def m1(pep, c=1, **kws): return fastmass(pep, ion_type='M', charge=c, **kws)
-def mseq(seq, c=1, **kws): return fastmass(topep(seq), ion_type='M', charge=c, **kws)
-
-def spmass(sp):
-    return fastmass(sp['pep'], 'M', sp['charge'], mod=sp['mod'], nmod=sp['nmod'])
-
-def mzdiff(sp):
-    return sp['mass'] - fastmass(sp['pep'], 'M', sp['charge'], mod=sp['mod'], nmod=sp['nmod'])
 
 def ppm(m1, m2):
     return ((m1 - m2) / m1) * 1000000
@@ -138,10 +125,6 @@ def normalize(it, mode):
     elif mode == 4: return np.sqrt(np.sqrt(np.sqrt(it)))
 
     return it
-
-
-# In[9]:
-
 
 @nb.njit
 def remove_precursor(v, pre_mz, c, precision, low, r):
@@ -226,27 +209,20 @@ mlist = asnp32([0] + [mono[a] for a in Alist] + [0, 0])
 
 # In[13]:
 
+@nb.njit
+def AA_pairs_native(seq, v):
+    for i in range(len(seq) - 1):
+        v[(seq[i] - 1) * 20 + seq[i + 1] - 1] = 1
+    return v
 
-# @nb.jit
-def decode(seq2d):
-    return np.argmax(seq2d, axis=-1) #np.int32([np.argmax(seq2d[i]) for i in range(len(seq2d))])
+def AA_pairs(seq, out=None):
+    if out is None: out = np.zeros(400, dtype='float32')
 
-def topep(seq):
-    return ''.join(map(lambda n:idmap[n], seq)).strip("*[]")
-
-def tostr(seq):
-    return ''.join([str(x) for x in seq])
-
-def destr(seq2d):
-    return tostr(decode(seq2d))
-
-def what(seq2d):
-    return topep(decode(seq2d))
+    return AA_pairs_native(seq, out)
 
 def compose(pep):
     cl = np.zeros(len(Alist), dtype='int32')
     for i, A in enumerate(Alist): cl[i] = pep.count(A)
-#     for idx in toseq(pep): cl[idx] += 1
     return cl
 
 @nb.njit
@@ -267,23 +243,11 @@ def encode(seq, length=-1, out=None):
     return n_encode(seq, length, out)
 
 def toseq(pep):
-#     return np.int32([ord(char) - 64 for char in pep])
     return np.int32([charMap[c] for c in pep.upper()])
 
-def padseq(seq, n):
-    v = np.zeros(n, dtype='int32')
-    v[:len(seq)] = seq
-    return v
 
-def onehot(pep, out=None, **kws):
-    return encode(toseq(pep), out=out, **kws)
-
-def oh(peps):
-    return np.asarray([onehot(pep) for pep in peps], dtype='int32')
-
-
-# In[14]:
-
+# In[15]:
+#### load data
 
 def spectra_ok(sp, ppm=10):
     mz, mass, pep, c = sp['mz'], sp['mass'], sp['pep'], sp['charge']
@@ -299,10 +263,6 @@ def spectra_ok(sp, ppm=10):
 def filter_spectra(db):
     return [sp for sp in db if spectra_ok(sp)]
 
-
-# ### load data
-
-# In[15]:
 
 cr = {1: 1, 2: 0.9, 3: 0.85, 4: 0.8, 5: 0.75, 6: 0.75, 7: 0.75, 8: 0.75}
 
@@ -372,11 +332,8 @@ def i2l(sps):
 spstrain = i2l(filter_spectra(readmgf('train.mgf', 'hcd')))
 spsval = i2l(filter_spectra(readmgf('validation.mgf', 'hcd')))
 
-
-# ### ResBlock
-
 # In[26]:
-
+#### ResBlock
 
 def norm_layer(norm):
     def get_norm_layer(**kws):
@@ -481,28 +438,6 @@ def res(x, l, ks, add=1, act='relu', c2d=False, norm=None, pool=2, strides=1,
     return x
 
 
-# #### fix
-
-# In[18]:
-
-
-@nb.njit
-def ndiA(seq, v):
-    for i in range(len(seq) - 1):
-        v[(seq[i] - 1) * 20 + seq[i + 1] - 1] = 1
-    return v
-
-def diA(seq, out=None):
-    if out is None: out = np.zeros(400, dtype='float32')
-
-    return ndiA(seq, out)
-
-def clean(pep):
-    return pep.strip("*[]").replace('I', 'L').replace('*', 'L').replace('[', 'A').replace(']', 'R')
-
-def cleans(peps): return [clean(p) for p in peps]
-
-
 # ### Denova start
 
 # In[20]:
@@ -522,9 +457,7 @@ class hyper_para():
         maxc: int = 8
 
         mode: int = 3
-        scale: float = 0.3
         kth: int = 50
-        cut_peaks: bool = True
 
         dynamic = config({'enhance': 1, 'bsz': 512})
 
@@ -559,7 +492,7 @@ class data_processor():
         return mzs, its
 
     def get_inputs(self, sps, training=1):
-        hyper = self.hyper ##!
+        hyper = self.hyper
         batch_size = len(sps)
 
         inputs = config({})
@@ -579,12 +512,12 @@ class data_processor():
             inputs.info[i][1] = sp['type']
             inputs.charge[i][c - 1] = 1
 
-            mdim = min(hyper.dim - 1, round((mass * c - c + 1) / hyper.pre))
+            precursor_index = min(hyper.dim - 1, round((mass * c - c + 1) / hyper.pre))
             vectorlize(mzs, its, mass, c, hyper.pre, hyper.dim, hyper.low, 0, out=inputs.y[i][0], use_max=1)
-            inputs.y[i][1][:mdim] = inputs.y[i][0][:mdim][::-1] # reverse it
+            inputs.y[i][1][:precursor_index] = inputs.y[i][0][:precursor_index][::-1] # reverse it
 
             vectorlize(mzs, its, mass, c, hyper.pre, hyper.dim, hyper.low, 0, out=inputs.y[i][2], use_max=0)
-            inputs.y[i][3][:mdim] = inputs.y[i][2][:mdim][::-1] # reverse mz
+            inputs.y[i][3][:precursor_index] = inputs.y[i][2][:precursor_index][::-1] # reverse mz
 
         return tuple([inputs[key] for key in inputs])
 
@@ -623,7 +556,7 @@ class data_processor():
             rst.length[i][len(pep)] = 1
             rst.rk[i] = int(pep[-1] == 'R' or pep[-1] == 'K')
 
-            diA(seq, out=rst.di[i])
+            AA_pairs(seq, out=rst.di[i])
             rst.nums[i] = compose(pep)
             
             for c in pep:
@@ -636,11 +569,8 @@ class data_processor():
 hyper = hyper_para()
 processor = data_processor(hyper)
 
-
-# #### sp_net
-
 # In[21]:
-
+#### models
 
 def bottomup(fu, norm='in', act='relu', **kws):
     v1 = fu[0]
@@ -668,7 +598,7 @@ class denovo_model():
 
             lst = []
 
-            fils = np.int32([16, 24, 32, 48, 64]) * 6
+            fils = np.int32([16, 24, 32, 48, 64]) * 12
             tcn = np.int32([8, 7, 6, 5, 4, ]) + 1
 
             for i, (l, r) in enumerate(zip(fils, tcn)):
@@ -704,7 +634,7 @@ class denovo_model():
         return k.models.Model([inp, mz_inp, c_inp, ], v1, name='sp_net')
 
     @staticmethod
-    def helptasks(v1, hyper, act='relu', norm='in'):        
+    def auxiliary_tasks(v1, hyper, act='relu', norm='in'):        
         def vec_dense(x, nodes, name, act='sigmoid', layers=tuple(), **kws):
             for l in layers: x = res(x, l, 3, act='relu', **kws)
             x = k.layers.GlobalAveragePooling1D()(x)
@@ -712,21 +642,21 @@ class denovo_model():
             x = k.layers.Dense(nodes, activation=act, name=name, dtype='float32')(x)
             return x
 
-        helplayers = []
+        aux_outputs = []
 
-        helplayers.append(vec_dense(v1, 1, normal=norm, name='mass'))
-        helplayers.append(vec_dense(v1, hyper.outlen, act='softmax', normal=norm, name='length'))
-        helplayers.append(vec_dense(v1, 1, normal=norm, name='rk'))
-        helplayers.append(vec_dense(v1, hyper.maxc, normal=norm, act='softmax', name='charge'))
+        aux_outputs.append(vec_dense(v1, 1, normal=norm, name='mass'))
+        aux_outputs.append(vec_dense(v1, hyper.outlen, act='softmax', normal=norm, name='length'))
+        aux_outputs.append(vec_dense(v1, 1, normal=norm, name='rk'))
+        aux_outputs.append(vec_dense(v1, hyper.maxc, normal=norm, act='softmax', name='charge'))
 
         #aux exist:
         x = v1
         x = k.layers.GlobalAveragePooling1D()(x)
         x = k.layers.Dense(len(Alist))(x)
         x = Activation('sigmoid', name='exist', dtype='float32')(x)
-        helplayers.append(x)
+        aux_outputs.append(x)
 
-        #aux nums:
+        #aux compose:
         x = v1
         x = k.layers.Permute((2, 1))(x)
         x = res(x, len(Alist), 1, act=act, norm=norm)
@@ -734,16 +664,16 @@ class denovo_model():
 
         x = k.layers.Conv1D(hyper.lmax, kernel_size=1, padding='same')(x)
         x = k.layers.Activation('softmax', name='nums', dtype='float32')(x)
-        helplayers.append(x)
+        aux_outputs.append(x)
 
-        #aux di:
+        #aux AA pairs:
         x = v1
         x = k.layers.GlobalAveragePooling1D()(x)
         x = k.layers.Dense(400)(x)
         x = k.layers.Activation('sigmoid', name='di', dtype='float32')(x)
-        helplayers.append(x) # don't merge
+        aux_outputs.append(x) # don't merge
 
-        return helplayers
+        return aux_outputs
 
     @staticmethod
     def build(hyper, act='relu', norm='in'):
@@ -755,15 +685,15 @@ class denovo_model():
         spmodel = denovo_model.sp_net(hyper)
         sp_vector = spmodel(model_inputs)
 
-        helplayers = denovo_model.helptasks(sp_vector, hyper)
+        aux_outputs = denovo_model.auxiliary_tasks(sp_vector, hyper)
         
         final_pep = k.layers.Conv1D(oh_dim, kernel_size=1, padding='same', use_bias=1)(sp_vector)
         final_pep = k.layers.Activation('softmax', name='peps', dtype='float32')(final_pep)
 
-        dm = k.models.Model(inputs=model_inputs, outputs=helplayers + [final_pep], name='dm')
+        full_model = k.models.Model(inputs=model_inputs, outputs=aux_outputs + [final_pep], name='full_model')
         novo = k.models.Model(inputs=model_inputs, outputs=final_pep, name='denovo')
 
-        return dm, novo, spmodel
+        return full_model, novo, spmodel
 
 
 # In[22]:
@@ -784,31 +714,15 @@ class model_builder():
             return mse
 
         @staticmethod
-        def mass_num(fn=k.losses.categorical_crossentropy, c=0.001):
-            mplist = mlist[1:-1]
-            def mse(yt, yp):
-                yt = K.cast(yt, yp.dtype)
-
-                loss = fn(yt, yp)
-                yt = K.cast(K.argmax(yt, axis=-1), 'float32') * mplist
-                yp = K.cast(K.argmax(yp, axis=-1), 'float32') * mplist
-                return c * k.losses.mean_absolute_error(yt, yp) + loss
-            return mse
-
-        @staticmethod
-        def mass_ce(fn=k.losses.categorical_crossentropy, c=0.004, l2=0):
+        def mass_ce(fn=k.losses.categorical_crossentropy, c=0.001):
             def mse(yt, yp):
                 yt = K.cast(yt, yp.dtype)
                 ce_loss = fn(yt, yp)
-                l2_loss = 0 #l2 * tf.norm(yp)
-
-        #         mp = K.sum(yp * mlist, axis=(-2, -1))
-        #         mt = K.sum(yt * mlist, axis=(-2, -1))
 
                 mp = K.sum(K.batch_flatten(yp * mlist), axis=-1)
                 mt = K.sum(K.batch_flatten(yt * mlist), axis=-1)
 
-                return c * k.losses.mean_absolute_error(mp, mt) + ce_loss + l2_loss #mean_absolute_percentage_error
+                return c * k.losses.mean_absolute_error(mp, mt) + ce_loss
             return mse
 
         @staticmethod
@@ -846,7 +760,7 @@ class model_builder():
         loss_fn = self.loss_fn
 
         self.losses = {
-            "peps": loss_fn.mass_ce(fn=loss_fn.mask_ce, c=0),
+            "peps": loss_fn.mass_ce(fn=loss_fn.mask_ce, c=0.0001),
             "exist": binary_crossentropy,
             "nums": sparse_categorical_crossentropy,
             "di": binary_crossentropy,
@@ -888,18 +802,12 @@ class model_builder():
             model.compile(optimizer=opt, loss=self.losses, loss_weights=self.weights, metrics=self.metrics)
 
 
-# #### start
-
 # In[23]:
-
+# #### start
 
 random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
-
-
-# In[27]:
-
 
 class train_mgr():
     def gen(self, sps, **kws):
@@ -936,16 +844,14 @@ class train_mgr():
                     validation_data=self.gen(self.valset, training=0),
                     verbose=1, callbacks=callbacks)
 
-tm = train_mgr()
-
-
 # In[28]:
 
+manager = train_mgr()
 
-dm, novo = tm.setup(summary=1)
+dm, novo = manager.setup(summary=1)
 
-tm.compile()
+manager.compile()
 
-tm.prepare_data()
+manager.prepare_data()
 
-tm.run()
+manager.run()
