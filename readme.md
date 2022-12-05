@@ -60,6 +60,10 @@ The output file is in MGF format
 
 We provide sample data on [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7371429.svg)](https://doi.org/10.5281/zenodo.7371429) for you to evaluate the sequencing performance. The `example.mgf` file on google drive contains ground truth spectra (randomly sampled from [NIST Human Synthetic Peptide Spectral Library](https://chemdata.nist.gov/dokuwiki/doku.php?id=peptidew:lib:kustersynselected20170530)), while the `example.tsv` file contains pre-run predictions.
 
+## Train this model
+
+See `train.py` for sample training codes
+
 ## Related works
 
 __Also, Visit [https://www.predfull.com/](https://www.predfull.com/) to check our previous project on full spectrum prediction__

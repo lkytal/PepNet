@@ -249,13 +249,13 @@ def toseq(pep):
 # In[15]:
 #### load data
 
-def spectra_ok(sp, ppm=10):
+def spectra_ok(sp, ppm_threshold=10):
     mz, mass, pep, c = sp['mz'], sp['mass'], sp['pep'], sp['charge']
 
     if not pep.isalpha():
         return False # unknown mod
 
-    if ppm > 0 and abs(ppmdiff(sp)) > ppm:
+    if ppm_threshold > 0 and abs(ppmdiff(sp)) > ppm_threshold:
         return False
 
     return True
@@ -325,12 +325,6 @@ def i2l(sps):
         sp['pep'] = sp['pep'].replace('I', 'L')
     return sps
 
-
-# In[16]:
-
-
-spstrain = i2l(filter_spectra(readmgf('train.mgf', 'hcd')))
-spsval = i2l(filter_spectra(readmgf('validation.mgf', 'hcd')))
 
 # In[26]:
 #### ResBlock
@@ -604,7 +598,6 @@ class denovo_model():
             for i, (l, r) in enumerate(zip(fils, tcn)):
                 if i > 0:
                     v1 = res(v1, l, 9, norm=norm, add=1, act=act, strides=2)
-                    v1 = k.layers.Dropout(0.2)(v1)
 
                 ext = r - 5
                 if r > ext:
@@ -810,7 +803,7 @@ np.random.seed(42)
 tf.random.set_seed(42)
 
 class train_mgr():
-    def gen(self, sps, **kws):
+    def data_generator(self, sps, **kws):
         return data_seq(sps, processor.process, hyper.dynamic.bsz, xonly=0, **kws)
 
     def setup(self, **kws):
@@ -824,8 +817,8 @@ class train_mgr():
         return self.dm, self.novo
 
     def prepare_data(self):
-        self.sppart = spstrain
-        self.valset = spsval
+        self.trainingset = i2l(filter_spectra(readmgf('train.mgf', 'hcd')))
+        self.valset = i2l(filter_spectra(readmgf('validation.mgf', 'hcd')))
 
     def compile(self, bsz=None, lr=None):
         ### para
@@ -840,8 +833,8 @@ class train_mgr():
     def run(self):
         callbacks = self.callbacks + [self.his]
 
-        self.dm.fit(self.gen(self.sppart), epochs=hyper.dynamic.eps,
-                    validation_data=self.gen(self.valset, training=0),
+        self.dm.fit(self.data_generator(self.trainingset), epochs=hyper.dynamic.eps,
+                    validation_data=self.data_generator(self.valset, training=0),
                     verbose=1, callbacks=callbacks)
 
 # In[28]:
