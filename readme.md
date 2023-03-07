@@ -4,6 +4,8 @@ __Visit [https://denovo.predfull.com/](https://denovo.predfull.com/) to try onli
 
 The state of the art Deep CNN neural network for *de novo* sequencing of tandem mass spectra, currently works on unmodified HCD spectra of charges 1+ to 4+.
 
+Free for academic uses.
+
 ## Update History
 
 * 2022.11.28: Revised version.
