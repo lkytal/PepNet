@@ -6,6 +6,7 @@ The state of the art Deep CNN neural network for *de novo* sequencing of tandem 
 
 ## Update History
 
+* 2023.04.27: Revised version.
 * 2022.11.28: Revised version.
 * 2021.12.28: First version.
 
@@ -17,7 +18,7 @@ Based on the structure of the residual convolutional networks. Current precision
 
 ## How to use
 
-__After clone this project, you should download the pre-trained model (`model.h5`) from [zenodo.org](https://zenodo.org/record/7371429) and place it into PepNet's folder.__
+__After clone this project, you should download the pre-trained model (`model.h5`) from [zenodo.org](https://zenodo.org/record/7869847) and place it into PepNet's folder.__
 
 ### Important Notes
 
@@ -33,6 +34,8 @@ Recommend to install dependency via [Anaconda](https://www.anaconda.com/distribu
 * Tensorflow >= 2.5.0
 * Pandas >= 0.20
 * pyteomics
+* numba
+* Tensorﬂow-addons
 
 ### Output format
 
@@ -58,7 +61,7 @@ The output file is in MGF format
 
 ## Prediction Examples
 
-We provide sample data on [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7371429.svg)](https://doi.org/10.5281/zenodo.7371429) for you to evaluate the sequencing performance. The `example.mgf` file on google drive contains ground truth spectra (randomly sampled from [NIST Human Synthetic Peptide Spectral Library](https://chemdata.nist.gov/dokuwiki/doku.php?id=peptidew:lib:kustersynselected20170530)), while the `example.tsv` file contains pre-run predictions.
+We provide sample data on [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7869847.svg)](https://doi.org/10.5281/zenodo.7869847) for you to evaluate the sequencing performance. The `example.mgf` file contains ground truth spectra (randomly sampled from [NIST Human Synthetic Peptide Spectral Library](https://chemdata.nist.gov/dokuwiki/doku.php?id=peptidew:lib:kustersynselected20170530)), while the `example.tsv` file contains pre-run predictions.
 
 ## Train this model
 
