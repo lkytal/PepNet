@@ -1,14 +1,14 @@
 # PepNet
 
-__Visit [https://denovo.predfull.com/](https://denovo.predfull.com/) to try online prediction__
-
 The state of the art Deep CNN neural network for *de novo* sequencing of tandem mass spectra, currently works on unmodified HCD spectra of charges 1+ to 4+.
 
 Free for academic uses.
 
+__Visit [https://denovo.predfull.com/](https://denovo.predfull.com/) to try online prediction__
+
 ## Update History
 
-* 2023.04.27: Revised version.
+* 2023.04.27: 2nd Revised version.
 * 2022.11.28: Revised version.
 * 2021.12.28: First version.
 
