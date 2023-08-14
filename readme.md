@@ -2,7 +2,7 @@
 
 The state of the art Deep CNN neural network for *de novo* sequencing of tandem mass spectra, currently works on unmodified HCD spectra of charges 1+ to 4+.
 
-Free for academic uses.
+Free for academic uses. Licensed under LGPL.
 
 __Visit [https://denovo.predfull.com/](https://denovo.predfull.com/) to try online prediction__
 
@@ -60,6 +60,8 @@ The output file is in MGF format
 * --input: the input mgf file
 * --output: the output file path
 * --model: the pretrained model
+
+Typical running speed: sequencing 10,000 spectra in ~59 seconds on a NVIDIA A6000 GPU.
 
 ## Prediction Examples
 
