@@ -1,5 +1,7 @@
 # PepNet
 
+## Code for "Accurate __De Novo__ Peptide Sequencing Using Fully Convolutional Neural Networks"
+
 The state of the art Deep CNN neural network for *de novo* sequencing of tandem mass spectra, currently works on unmodified HCD spectra of charges 1+ to 4+.
 
 Free for academic uses. Licensed under LGPL.
@@ -37,6 +39,9 @@ Recommend to install dependency via [Anaconda](https://www.anaconda.com/distribu
 * Pandas >= 0.20
 * pyteomics
 * numba
+
+Packages Required for traning:
+
 * Tensorﬂow-addons
 
 ### Output format
@@ -66,6 +71,8 @@ Typical running speed: sequencing 10,000 spectra in ~59 seconds on a NVIDIA A600
 ## Prediction Examples
 
 We provide sample data on [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7869847.svg)](https://doi.org/10.5281/zenodo.7869847) for you to evaluate the sequencing performance. The `example.mgf` file contains ground truth spectra (randomly sampled from [NIST Human Synthetic Peptide Spectral Library](https://chemdata.nist.gov/dokuwiki/doku.php?id=peptidew:lib:kustersynselected20170530)), while the `example.tsv` file contains pre-run predictions.
+
+Also, you can run `python evaluation.py --mgf example.mgf --novorst example_prediction.tsv` to generate figures presenting the de novo performance.
 
 ## Train this model
 
