@@ -22,7 +22,7 @@ def np32(x): return np.array(x, dtype='float32')
 def clipn(*kw, sigma=4):
     return np.clip(np.random.randn(*kw), -sigma, sigma) / sigma
 
-    
+
 def fastmass(pep, ion_type, charge, mod=None, cam=True):
     base = mass.fast_mass(pep, ion_type=ion_type, charge=charge)
 
@@ -106,7 +106,9 @@ def _remove_precursor(v, pre_mz, c, precision, low, r):
         if mz > 0 and mz >= low:
             pc = round((mz - low) / precision)
 
-            if pc - r < len(v): v[max(0, pc - r): min(len(v), pc + r)] = 0
+            if pc - r < len(v):
+                v[max(0, pc - r): min(len(v), pc + r)] = 0
+
     return None # force inline
 
 def remove_precursor(v, pre_mz, c, precision, low, r=1):
@@ -174,7 +176,7 @@ def what(seq2d):
 def clean(pep):
     return pep.strip("*[]").replace('I', 'L').replace('*', 'L').replace('[', 'A').replace(']', 'R')
 
-    
+
 def iterate(x, bsz):
     while len(x) > bsz:
         yield x[:bsz]

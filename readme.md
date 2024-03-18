@@ -2,6 +2,8 @@
 
 ## Code for "Accurate __De Novo__ Peptide Sequencing Using Fully Convolutional Neural Networks"
 
+Link to [Accurate __De Novo__ Peptide Sequencing Using Fully Convolutional Neural Networks](ttps://link.springer.com/article/10.1038/s41467-023-43010-x)
+
 The state of the art Deep CNN neural network for *de novo* sequencing of tandem mass spectra, currently works on unmodified HCD spectra of charges 1+ to 4+.
 
 Free for academic uses. Licensed under LGPL.
