@@ -4,7 +4,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 def calculate_accuracy(df):
-    correct_predictions = df[df['TITLE'] == df['DENOVO']]
+    df['TITLE_MODIFIED'] = df['TITLE'].str.replace('I', 'L')
+    correct_predictions = df[df['TITLE_MODIFIED'] == df['DENOVO']]
     accuracy = len(correct_predictions) / len(df)
     return accuracy
 
