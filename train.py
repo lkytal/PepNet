@@ -1,54 +1,25 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# ### Import
-
-# In[1]:
-
-
-import os
-import time
 import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
 import numba as nb
 import random
 import math
-import json
-import functools
 from dataclasses import dataclass, asdict
-from collections import namedtuple
 
-import pyteomics
 from pyteomics import mgf, mass
 
-
-# In[2]:
-
-
 import tensorflow as tf
-print(tf.__version__)
-
-import tensorflow.keras as keras
 import tensorflow.keras as k
 from tensorflow.keras import backend as K
-import tensorflow.experimental.numpy as tnp
-from tensorflow.keras.layers import Layer, InputSpec
-from tensorflow.keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, LearningRateScheduler, TensorBoard
-from tensorflow.keras.layers import Conv1D, MaxPooling1D, Dense, Add, Flatten, Activation, BatchNormalization
-from tensorflow.keras.layers import LayerNormalization
-from tensorflow.keras import Model, Input
-from tensorflow.keras.losses import categorical_crossentropy, binary_crossentropy, MSE, MAE, cosine_similarity
+from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras.layers import Add, Activation, BatchNormalization, LayerNormalization
+from tensorflow.keras import Input
+from tensorflow.keras.losses import categorical_crossentropy, binary_crossentropy, MSE
 from tensorflow.keras.losses import sparse_categorical_crossentropy
 
-import tensorflow_addons as tfa
 from tensorflow_addons.layers import InstanceNormalization
 from tensorflow_addons.optimizers import RectifiedAdam as radam
-
-
-# ### Help functions
-
-# In[3]:
 
 
 def asnp(x): return np.asarray(x)
@@ -74,8 +45,8 @@ class data_seq(k.utils.Sequence):
         self.xonly = xonly
         self.kws = kws
 
-    def on_epoch_begin(self, ep):
-        if ep > 0 and self.shuffle:
+    def on_epoch_end(self):
+        if self.shuffle:
             np.random.shuffle(self.sps)
 
     def __len__(self):
@@ -109,10 +80,7 @@ def ppmdiff(sp, pep=None):
     return ((sp['mass'] - mass) / mass) * 1000000
 
 
-# #### flat and vectorlize
-
-# In[8]:
-
+# flat and vectorlize
 @nb.njit
 def normalize(it, mode):
     if mode == 0:
@@ -140,8 +108,6 @@ def kth(v, k):
     return np.partition(v, k)[k]
 
 
-# In[10]:
-
 @nb.njit
 def mz2pos(mzs, pre, low): return round(mzs / pre + low)
 
@@ -158,9 +124,6 @@ def flat(v, mz, it, pre, low, use_max):
             v[pos] += it[i]
 
     return v
-
-
-# In[11]:
 
 
 @nb.njit
@@ -186,11 +149,7 @@ def vectorlize(mz, it, mass, c, precision, dim, low, mode, out=None, kth=-1, th=
     return native_vectorlize(asnp32(mz), np32(it), mass, c, precision, dim, low, mode, out, kth, th, de, dn, use_max)
 
 
-# #### Process
-
-# In[12]:
-
-
+# Process
 mono = {"G": 57.021464, "A": 71.037114, "S": 87.032029, "P": 97.052764, "V": 99.068414, "T": 101.04768,
         "C": 160.03019, "L": 113.08406, "I": 113.08406, "D": 115.02694, "Q": 128.05858, "K": 128.09496,
         "E": 129.04259, "M": 131.04048, "m": 147.0354, "H": 137.05891, "F": 147.06441, "R": 156.10111,
@@ -206,8 +165,6 @@ charMap = {aa: i for i, aa in enumerate(clist)}
 idmap = {i: aa for i, aa in enumerate(clist)}
 mlist = asnp32([0] + [mono[a] for a in Alist] + [0, 0])
 
-
-# In[13]:
 
 @nb.njit
 def AA_pairs_native(seq, v):
@@ -246,9 +203,7 @@ def toseq(pep):
     return np.int32([charMap[c] for c in pep.upper()])
 
 
-# In[15]:
-#### load data
-
+# load data
 def spectra_ok(sp, ppm_threshold=10):
     mz, mass, pep, c = sp['mz'], sp['mass'], sp['pep'], sp['charge']
 
@@ -272,8 +227,9 @@ def convert_mgf(sps):
     for sp in sps:
         param = sp['params']
 
-        if not 'charge' in param: raise
-            
+        if not 'charge' in param:
+            raise ValueError("MGF contains spectra without charge")
+
         c = int(str(param['charge'][0])[0])
 
         pep = title = param['title']
@@ -294,7 +250,7 @@ def convert_mgf(sps):
                     hcd = hcd * 500 * cr[c] / mass
                 else:
                     raise Exception("Invalid type!")
-            except:
+            except Exception:
                 hcd = 0
         else: hcd = 0
 
@@ -326,15 +282,13 @@ def i2l(sps):
     return sps
 
 
-# In[26]:
-#### ResBlock
-
+# ResBlock
 def norm_layer(norm):
     def get_norm_layer(**kws):
         if norm == 'bn':
             return BatchNormalization(**kws)
         if norm == 'bn0':
-            normalizer = BatchNormalization({"gamma_initializer" :'zeros'}, **kws)
+            return BatchNormalization(gamma_initializer='zeros', **kws)
         elif norm == 'in':
             return InstanceNormalization(**kws)
         elif norm == 'ln':
@@ -427,16 +381,12 @@ def res(x, l, ks, add=1, act='relu', c2d=False, norm=None, pool=2, strides=1,
     x = Activation(act)(xc) #final activation, xc to x naming
 
     if pooling == 1 or pooling == 'max': x = lset.MaxPoolingLayer(pool)(x)
-    elif pooling == 2 or pooling == 'ave': x = lset.AvePoolingLayer(pool)(x)
+    elif pooling == 2 or pooling == 'ave': x = lset.AveragePoolingLayer(pool)(x)
 
     return x
 
 
-# ### Denova start
-
-# In[20]:
-
-
+# Denovo start
 class hyper_para():
     @dataclass(frozen = True)
     class hyper():
@@ -563,9 +513,8 @@ class data_processor():
 hyper = hyper_para()
 processor = data_processor(hyper)
 
-# In[21]:
-#### models
 
+# models
 def bottomup(fu, norm='in', act='relu', **kws):
     v1 = fu[0]
     fu = fu[1:] # first is v1
@@ -689,9 +638,6 @@ class denovo_model():
         return full_model, novo, spmodel
 
 
-# In[22]:
-
-
 class model_builder():
     class loss_fn:
         @staticmethod
@@ -795,13 +741,7 @@ class model_builder():
             model.compile(optimizer=opt, loss=self.losses, loss_weights=self.weights, metrics=self.metrics)
 
 
-# In[23]:
-# #### start
-
-random.seed(42)
-np.random.seed(42)
-tf.random.set_seed(42)
-
+# training
 class train_mgr():
     def data_generator(self, sps, **kws):
         return data_seq(sps, processor.process, hyper.dynamic.bsz, xonly=0, **kws)
@@ -821,7 +761,7 @@ class train_mgr():
         self.valset = i2l(filter_spectra(readmgf('validation.mgf', 'hcd')))
 
     def compile(self, bsz=None, lr=None):
-        ### para
+        # hyper-parameters
         hyper.dynamic.eps = 50
         hyper.dynamic.bsz = 32 * int(hyper.pre * 4 * 2.5) #* 2
         hyper.dynamic.lr = lr if lr else (hyper.dynamic.bsz / 1024) * 0.0009 * 16 * 6
@@ -837,14 +777,20 @@ class train_mgr():
                     validation_data=self.data_generator(self.valset, training=0),
                     verbose=1, callbacks=callbacks)
 
-# In[28]:
 
-manager = train_mgr()
+def main():
+    print(tf.__version__)
 
-dm, novo = manager.setup(summary=1)
+    random.seed(42)
+    np.random.seed(42)
+    tf.random.set_seed(42)
 
-manager.compile()
+    manager = train_mgr()
+    manager.setup(summary=1)
+    manager.compile()
+    manager.prepare_data()
+    manager.run()
 
-manager.prepare_data()
 
-manager.run()
+if __name__ == '__main__':
+    main()

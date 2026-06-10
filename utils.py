@@ -1,12 +1,8 @@
-import argparse
 import numpy as np
 import numba as nb
-from numba import int32, float32, float64, boolean
 import math
-from pyteomics import mgf, mass
+from pyteomics import mass
 
-import tensorflow as tf
-import tensorflow.keras as keras
 import tensorflow.keras as k
 
 class config(dict):
@@ -42,8 +38,8 @@ class data_seq(k.utils.Sequence):
         self.shuffle = shuffle
         self.xonly = xonly
 
-    def on_epoch_begin(self, ep):
-        if ep > 0 and self.shuffle:
+    def on_epoch_end(self):
+        if self.shuffle:
             np.random.shuffle(self.sps)
 
     def __len__(self):
@@ -86,6 +82,27 @@ for a in amino_list:
     id2amino[amino2id[a]] = a
 
 mass_list = asnp32([0] + [mono[a] for a in amino_list] + [0, 0])
+
+# search the single residue substitution that best closes the precursor mass gap
+@nb.njit
+def find_best_substitution(seq, masses, msp, mass, c, delta):
+    pos = 0
+    a = seq[0]
+
+    for i in range(len(seq) - 1):  # no last pos
+        mi = masses[seq[i]]
+        for j in range(1, 21):
+            if j == 8:
+                continue  # ignore 'I'
+
+            d = msp - mass + (masses[j] - mi) / c
+
+            if abs(d) < abs(delta):
+                delta = d
+                pos = i
+                a = j
+
+    return delta, pos, a
 
 @nb.njit
 def normalize(it, mode):
@@ -162,7 +179,7 @@ def vectorlize(mz, it, mass, c, precision, dim, low, mode, out=None, kth=-1, th=
 
 
 def decode(seq2d):
-    return np.int32([np.argmax(seq2d[i]) for i in range(len(seq2d))])
+    return np.argmax(seq2d, axis=-1).astype('int32')
 
 def topep(seq):
     return ''.join(map(lambda n: id2amino[n], seq)).strip("*[]")

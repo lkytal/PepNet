@@ -37,7 +37,8 @@ __After clone this project, you should download the pre-trained model (`model.h5
 Recommend to install dependency via [Anaconda](https://www.anaconda.com/distribution/)
 
 * Python >= 3.7
-* Tensorflow >= 2.5.0
+* Tensorflow >= 2.5.0 but <= 2.14
+* Tensorflow_addons
 * Pandas >= 0.20
 * pyteomics
 * numba

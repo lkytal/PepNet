@@ -13,9 +13,6 @@ from tensorflow_addons.layers import InstanceNormalization
 from utils import *
 
 
-print(tf.__version__, tf.config.list_physical_devices('GPU'))
-
-
 def read_mgf(data, count=-1, default_charge=-1):
     collision_const = {1: 1, 2: 0.9, 3: 0.85, 4: 0.8, 5: 0.75, 6: 0.75, 7: 0.75, 8: 0.75}
     spectra = []
@@ -52,7 +49,7 @@ def read_mgf(data, count=-1, default_charge=-1):
                 hcd = hcd * 500 * collision_const[c] / mass
             else:
                 raise Exception("Invalid eV format!")
-        except:
+        except Exception:
             hcd = 0
 
         mz = sp['m/z array']
@@ -86,24 +83,11 @@ def post_correction(matrix, mass, c, ppm=10):
 
     msp = m1(topep(seq), c)
     delta = msp - mass
-    pos = 0
-    a = seq[0]
 
     if abs(delta) < tol:
         return topep(seq), -1, positional_score
 
-    for i in range(len(seq) - 1):  # no last pos
-        mi = mass_list[seq[i]]
-        for j in range(1, 21):
-            if j == 8:
-                continue  # ignore 'I'
-
-            d = msp - mass + (mass_list[j] - mi) / c
-
-            if abs(d) < abs(delta):
-                delta = d
-                pos = i
-                a = j
+    delta, pos, a = find_best_substitution(seq, mass_list, msp, mass, c, delta)
 
     if abs(delta) < tol:  # have good match
         candi = np.int32(seq == seq[pos])
@@ -188,47 +172,57 @@ def denovo(model, spectra, batch_size):
     return peps, predict_peps, scores, positional_scores, ppm_diffs, spectra
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--input', type=str,
-                    help='input file path', default='example.mgf')
-parser.add_argument('--output', type=str,
-                    help='output file path', default='example.tsv')
-parser.add_argument('--model', type=str,
-                    help='Pretained model path', default='model.h5')
-parser.add_argument('--loop_size', type=int,
-                    help='number of spectra in memory', default=10000)
-parser.add_argument('--default_charge', type=int,
-                    help='default charge for spectra without charges, -1 means disabled', default=-1)
-parser.add_argument('--batch_size', type=int,
-                    help='number of spectra per step', default=128)
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input', type=str,
+                        help='input file path', default='example.mgf')
+    parser.add_argument('--output', type=str,
+                        help='output file path', default='example.tsv')
+    parser.add_argument('--model', type=str,
+                        help='Pretained model path', default='model.h5')
+    parser.add_argument('--loop_size', type=int,
+                        help='number of spectra in memory', default=10000)
+    parser.add_argument('--default_charge', type=int,
+                        help='default charge for spectra without charges, -1 means disabled', default=-1)
+    parser.add_argument('--batch_size', type=int,
+                        help='number of spectra per step', default=128)
+    return parser.parse_args()
 
-args = parser.parse_args()
 
-print('Loading model....')
-tf.keras.backend.clear_session()
-model = k.models.load_model(args.model, compile=0)
+def main():
+    args = parse_args()
 
-print("Starting reading mgf of:", args.input)
-input_stream = mgf.read(open(args.input, "r"), convert_arrays=1, read_charges=False,
-                    dtype='float32', use_index=False)
+    print(tf.__version__, tf.config.list_physical_devices('GPU'))
 
-f = open(args.output, 'w+')
-f.writelines(['TITLE\tDENOVO\tScore\tPPM Difference\tPositional Score\n'])
+    print('Loading model....')
+    tf.keras.backend.clear_session()
+    model = k.models.load_model(args.model, compile=0)
 
-# sequencing loop
-i = 0
-while True:
-    spectra = read_mgf(input_stream, count=args.loop_size, default_charge=args.default_charge)
-    if len(spectra) <= 0:
-        break
+    print("Starting reading mgf of:", args.input)
 
-    print("De novo spectra from", i, "to", i + len(spectra))
-    i += len(spectra)
+    i = 0
+    with open(args.input, "r") as input_file, open(args.output, 'w+') as f:
+        input_stream = mgf.read(input_file, convert_arrays=1, read_charges=False,
+                                dtype='float32', use_index=False)
 
-    peps, ppeps, scores, pscores, ppms, _ = denovo(model, spectra, args.batch_size)
+        f.writelines(['TITLE\tDENOVO\tScore\tPPM Difference\tPositional Score\n'])
 
-    f.writelines("\t".join([p, pp, f4(s), str(ppm), str(list(pscore)[:len(pp)])]) + "\n"
-                 for p, pp, s, pscore, ppm in zip(peps, ppeps, scores, pscores, ppms))
+        # sequencing loop
+        while True:
+            spectra = read_mgf(input_stream, count=args.loop_size, default_charge=args.default_charge)
+            if len(spectra) <= 0:
+                break
 
-f.close()
-print('Finished,', i, 'spectra in total')
+            print("De novo spectra from", i, "to", i + len(spectra))
+            i += len(spectra)
+
+            peps, ppeps, scores, pscores, ppms, _ = denovo(model, spectra, args.batch_size)
+
+            f.writelines("\t".join([p, pp, f4(s), str(ppm), str(list(pscore)[:len(pp)])]) + "\n"
+                         for p, pp, s, pscore, ppm in zip(peps, ppeps, scores, pscores, ppms))
+
+    print('Finished,', i, 'spectra in total')
+
+
+if __name__ == '__main__':
+    main()
